@@ -1,6 +1,8 @@
 const { Client } = require('pg');
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:admin123@localhost:5432/project_name?schema=public';
+require('dotenv').config();
+
+const connectionString = process.env.DATABASE_URL;
 
 const client = new Client({
   connectionString,
@@ -10,17 +12,20 @@ const runMigration = async () => {
   let initialClient;
   try {
     console.log('Connecting to default postgres database to ensure target DB exists...');
-    initialClient = new Client({ connectionString: 'postgresql://postgres:admin123@localhost:5432/postgres' });
+    
+    // We parse the connection string to connect to default postgres db
+    const defaultUrl = connectionString.replace('/Bharosa', '/postgres');
+    initialClient = new Client({ connectionString: defaultUrl });
     await initialClient.connect();
     
-    const dbRes = await initialClient.query("SELECT 1 FROM pg_database WHERE datname = 'project_name'");
+    const dbRes = await initialClient.query("SELECT 1 FROM pg_database WHERE datname = 'Bharosa'");
     if (dbRes.rowCount === 0) {
-      console.log('Creating database project_name...');
-      await initialClient.query('CREATE DATABASE project_name');
+      console.log('Creating database Bharosa...');
+      await initialClient.query('CREATE DATABASE "Bharosa"');
     }
     await initialClient.end();
 
-    console.log('Connecting to project_name database...');
+    console.log('Connecting to Bharosa database...');
     await client.connect();
 
     console.log('Running migrations...');
