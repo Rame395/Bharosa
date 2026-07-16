@@ -122,6 +122,70 @@ app.post('/charges/:id/approve', verifySupabaseToken, async (req, res) => {
   }
 });
 
+// --- Trust Layer Routes ---
+
+// Guarantor Vouches for a New Provider
+app.post('/guarantor/vouch', verifySupabaseToken, async (req, res) => {
+  const guarantorId = req.user.sub;
+  const { voucheeId } = req.body;
+  try {
+    const { rows } = await pool.query(
+      "INSERT INTO guarantor_vouches (guarantor_id, vouchee_id, status) VALUES ($1, $2, 'pending_admin') RETURNING *",
+      [guarantorId, voucheeId]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rate a completed job and update Trust Scores
+app.post('/jobs/:id/rate', verifySupabaseToken, async (req, res) => {
+  const customerId = req.user.sub;
+  const { id } = req.params;
+  const { rating, comment, photo_url } = req.body; // rating should be 1-5
+
+  try {
+    // 1. Get Job details to ensure customer owns it and get provider_id
+    const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1 AND customer_id = $2', [id, customerId]);
+    if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found or unauthorized' });
+    const providerId = jobRes.rows[0].provider_id;
+
+    // 2. Insert Rating
+    const { rows } = await pool.query(
+      'INSERT INTO ratings (job_id, customer_id, provider_id, rating, comment, photo_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [id, customerId, providerId, rating, comment, photo_url]
+    );
+
+    // 3. Trust Score Algorithm
+    let trustScoreDelta = 0;
+    if (rating === 5) {
+      trustScoreDelta = 5;
+    } else if (rating <= 2) {
+      trustScoreDelta = -10; // Complaint penalty
+    }
+
+    if (trustScoreDelta !== 0) {
+      // Update Provider Trust Score
+      await pool.query('UPDATE providers SET trust_score = trust_score + $1 WHERE id = $2', [trustScoreDelta, providerId]);
+
+      // The Guarantor Penalty
+      if (trustScoreDelta < 0) {
+        const provRes = await pool.query('SELECT guarantor_id FROM providers WHERE id = $1', [providerId]);
+        const guarantorId = provRes.rows[0]?.guarantor_id;
+        if (guarantorId) {
+          // Guarantor takes a -5 hit for vouching for a bad provider
+          await pool.query('UPDATE providers SET trust_score = trust_score - 5 WHERE id = $1', [guarantorId]);
+        }
+      }
+    }
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Backend API listening on port ${port}`);
 });
