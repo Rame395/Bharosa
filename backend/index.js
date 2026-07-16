@@ -186,6 +186,69 @@ app.post('/jobs/:id/rate', verifySupabaseToken, async (req, res) => {
   }
 });
 
+// Cancel a job (Fast, Forgiving Cancellation)
+app.post('/jobs/:id/cancel', verifySupabaseToken, async (req, res) => {
+  const customerId = req.user.sub;
+  const { id } = req.params;
+
+  try {
+    const jobRes = await pool.query('SELECT status FROM jobs WHERE id = $1 AND customer_id = $2', [id, customerId]);
+    if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found or unauthorized' });
+
+    // Allow instant cancellation unless completed or cancelled
+    if (jobRes.rows[0].status === 'completed') {
+      return res.status(400).json({ error: 'Cannot cancel a completed job' });
+    }
+
+    const { rows } = await pool.query(
+      "UPDATE jobs SET status = 'cancelled' WHERE id = $1 RETURNING *",
+      [id]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Provider Routes ---
+
+// Get jobs assigned to the logged-in provider
+app.get('/provider/jobs', verifySupabaseToken, async (req, res) => {
+  const providerUserId = req.user.sub; // This is the user's UUID
+  try {
+    // First find the provider record for this user
+    const provRes = await pool.query('SELECT id FROM providers WHERE user_id = $1', [providerUserId]);
+    if (provRes.rowCount === 0) return res.status(404).json({ error: 'Provider profile not found' });
+    
+    const providerId = provRes.rows[0].id;
+    
+    const { rows } = await pool.query(`
+      SELECT j.*, 
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', jc.id,
+              'description', jc.description,
+              'amount', jc.amount,
+              'is_estimate', jc.is_estimate,
+              'status', jc.status
+            )
+          ) FILTER (WHERE jc.id IS NOT NULL),
+          '[]'
+        ) as charges
+      FROM jobs j
+      LEFT JOIN job_charges jc ON j.id = jc.job_id
+      WHERE j.provider_id = $1
+      GROUP BY j.id
+      ORDER BY j.created_at DESC
+    `, [providerId]);
+    
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Backend API listening on port ${port}`);
 });
