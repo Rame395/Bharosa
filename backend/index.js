@@ -40,6 +40,21 @@ app.get('/', (req, res) => {
   res.send('Bharosa API is running');
 });
 
+// Get all verified providers
+app.get('/providers', verifySupabaseToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.*, g.name as guarantor_name 
+      FROM providers p
+      LEFT JOIN providers g ON p.guarantor_id = g.id
+      WHERE p.status = 'verified'
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Job Routes ---
 
 // Create a new job
