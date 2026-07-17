@@ -72,10 +72,15 @@ app.post('/jobs', verifySupabaseToken, async (req, res) => {
 // Get job details (including visits and charges)
 app.get('/jobs/:id', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
+  const userId = req.user.sub;
   try {
     const jobRes = await pool.query('SELECT * FROM jobs WHERE id = $1', [id]);
     if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
     const job = jobRes.rows[0];
+
+    if (job.customer_id !== userId && job.provider_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized: You do not have access to this job' });
+    }
 
     const visitsRes = await pool.query('SELECT * FROM job_visits WHERE job_id = $1 ORDER BY visit_date ASC', [id]);
     const chargesRes = await pool.query('SELECT * FROM job_charges WHERE job_id = $1 ORDER BY created_at ASC', [id]);
@@ -91,8 +96,13 @@ app.get('/jobs/:id', verifySupabaseToken, async (req, res) => {
 // Add a visit to a job (Provider action - simplified auth for MVP)
 app.post('/jobs/:id/visits', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
+  const userId = req.user.sub;
   const { visit_date, notes } = req.body;
   try {
+    const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1', [id]);
+    if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
+    if (jobRes.rows[0].provider_id !== userId) return res.status(403).json({ error: 'Unauthorized: Only the assigned provider can add a visit' });
+
     const { rows } = await pool.query(
       'INSERT INTO job_visits (job_id, visit_date, notes) VALUES ($1, $2, $3) RETURNING *',
       [id, visit_date, notes]
@@ -106,8 +116,13 @@ app.post('/jobs/:id/visits', verifySupabaseToken, async (req, res) => {
 // Add a charge to a job (Provider action)
 app.post('/jobs/:id/charges', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
+  const userId = req.user.sub;
   const { visit_id, description, amount, is_estimate } = req.body;
   try {
+    const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1', [id]);
+    if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
+    if (jobRes.rows[0].provider_id !== userId) return res.status(403).json({ error: 'Unauthorized: Only the assigned provider can add a charge' });
+
     const { rows } = await pool.query(
       'INSERT INTO job_charges (job_id, visit_id, description, amount, is_estimate) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [id, visit_id, description, amount, is_estimate]
@@ -123,7 +138,16 @@ app.post('/jobs/:id/charges', verifySupabaseToken, async (req, res) => {
 // Approve a charge (Customer action)
 app.post('/charges/:id/approve', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
+  const userId = req.user.sub;
   try {
+    const chargeRes = await pool.query('SELECT job_id FROM job_charges WHERE id = $1', [id]);
+    if (chargeRes.rowCount === 0) return res.status(404).json({ error: 'Charge not found' });
+    
+    const jobRes = await pool.query('SELECT customer_id FROM jobs WHERE id = $1', [chargeRes.rows[0].job_id]);
+    if (jobRes.rowCount === 0 || jobRes.rows[0].customer_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized: Only the customer can approve charges' });
+    }
+
     const { rows } = await pool.query(
       'UPDATE job_charges SET customer_approved_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
