@@ -64,14 +64,14 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           contentContainerStyle={styles.listContainer}
           renderItem={({ item }) => (
             <ProviderCard
-              name={item.name}
-              isVerified={item.status === 'verified'}
+              name={item.full_name}
+              isVerified={item.is_verified}
               guarantorName={item.guarantor_name || 'Bharosa Admin'}
               rating={item.trust_score ? (item.trust_score / 10).toFixed(1) : 'New'} // Dummy trust score display
               priceRange="Consultation req."
               isFixedPrice={false}
               responseTime="Usually fast"
-              onPress={() => handleProviderPress(item.id, item.name)}
+              onPress={() => handleProviderPress(item.id, item.full_name)}
             />
           )}
         />
