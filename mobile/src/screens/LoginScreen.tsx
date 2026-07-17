@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { supabase } from '../supabase';
 import { T } from '../designSystem';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export const LoginScreen = ({ navigation }: any) => {
   const [phone, setPhone] = useState('');
@@ -24,6 +28,46 @@ export const LoginScreen = ({ navigation }: any) => {
       Alert.alert('Error', error.message);
     } else {
       navigation.navigate('Otp', { phone: formattedPhone });
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setLoading(true);
+      const redirectUrl = Linking.createURL('/auth');
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        if (result.type === 'success' && result.url) {
+          const fragment = result.url.split('#')[1];
+          if (fragment) {
+            const params = fragment.split('&').reduce((acc, current) => {
+              const [key, value] = current.split('=');
+              acc[key] = value;
+              return acc;
+            }, {} as Record<string, string>);
+            if (params.access_token && params.refresh_token) {
+              await supabase.auth.setSession({ 
+                access_token: params.access_token, 
+                refresh_token: params.refresh_token 
+              });
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -51,7 +95,7 @@ export const LoginScreen = ({ navigation }: any) => {
         </TouchableOpacity>
 
         {/* Placeholder for Google OAuth fallback */}
-        <TouchableOpacity style={styles.googleButton} onPress={() => Alert.alert('Coming Soon', 'Google OAuth fallback')}>
+        <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn} disabled={loading}>
           <Text style={styles.googleButtonText}>Continue with Google</Text>
         </TouchableOpacity>
       </View>

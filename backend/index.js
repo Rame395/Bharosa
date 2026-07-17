@@ -3,6 +3,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,6 +17,22 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+const jwks = jwksClient({
+  jwksUri: 'https://vulirqqauypwdnkufehy.supabase.co/auth/v1/.well-known/jwks.json'
+});
+
+function getKey(header, callback) {
+  jwks.getSigningKey(header.kid, function(err, key) {
+    if (err) {
+      console.error('JWKS error:', err);
+      return callback(err);
+    }
+    const signingKey = key.publicKey || key.rsaPublicKey;
+    callback(null, signingKey);
+  });
+}
+
+// Middleware to verify Supabase JWT
 const verifySupabaseToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -23,17 +40,40 @@ const verifySupabaseToken = (req, res, next) => {
   }
 
   const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET);
-    if (!decoded || !decoded.sub) {
-      throw new Error('Invalid token structure');
+  
+  jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
+    if (err || !decoded || !decoded.sub) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
     }
-    req.user = decoded;
+    req.user = decoded; // Contains user ID in `sub`
     next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
+  });
 };
+
+// Sync Supabase Auth User with local DB
+app.post('/users/sync', verifySupabaseToken, async (req, res) => {
+  const userId = req.user.sub;
+  const { name, role } = req.body;
+  const contactInfo = req.user.phone || req.user.email || 'unknown'; 
+  
+  try {
+    if (role === 'provider') {
+      await pool.query(
+        'INSERT INTO providers (id, full_name, phone, category) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
+        [userId, name || 'New Provider', contactInfo, 'General']
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO customers (id, full_name, phone) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
+        [userId, name || 'New Customer', contactInfo]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Sync Error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 app.get('/', (req, res) => {
   res.send('Bharosa API is running');
