@@ -14,7 +14,6 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// Middleware to verify Supabase JWT
 const verifySupabaseToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -23,16 +22,14 @@ const verifySupabaseToken = (req, res, next) => {
 
   const token = authHeader.split(' ')[1];
   try {
-    // Note: In production, verify the JWT signature using Supabase JWT secret
-    const decoded = jwt.decode(token); // For now, just decode to extract user ID. 
-    // Ideally: jwt.verify(token, process.env.SUPABASE_JWT_SECRET)
+    const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET);
     if (!decoded || !decoded.sub) {
       throw new Error('Invalid token structure');
     }
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 
