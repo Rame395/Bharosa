@@ -67,7 +67,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
               name={item.full_name}
               isVerified={item.is_verified}
               guarantorName={item.guarantor_name || 'Bharosa Admin'}
-              rating={item.trust_score ? (item.trust_score / 10).toFixed(1) : 'New'} // Dummy trust score display
+              rating={item.trust_score ? (item.trust_score / 10).toFixed(1) : 'New'}
               priceRange="Consultation req."
               isFixedPrice={false}
               responseTime="Usually fast"

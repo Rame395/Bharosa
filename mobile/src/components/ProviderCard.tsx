@@ -6,7 +6,7 @@ interface ProviderCardProps {
   name: string;
   isVerified: boolean;
   guarantorName: string;
-  rating: number;
+  rating: string;
   priceRange: string;
   isFixedPrice: boolean;
   responseTime: string;
@@ -37,7 +37,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
       <Text style={styles.guarantorText}>Vouched by {guarantorName}</Text>
       
       <View style={styles.statsRow}>
-        <Text style={styles.rating}>★ {rating.toFixed(1)}</Text>
+        <Text style={styles.rating}>★ {rating}</Text>
         <Text style={styles.responseTime}>⏱ {responseTime}</Text>
       </View>
 
