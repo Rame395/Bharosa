@@ -7,7 +7,9 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN || '*' // '*' fallback for local dev if missing, but should be set in prod
+}));
 app.use(express.json());
 
 const pool = new Pool({
@@ -48,7 +50,8 @@ app.get('/providers', verifySupabaseToken, async (req, res) => {
     `);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -65,7 +68,8 @@ app.post('/jobs', verifySupabaseToken, async (req, res) => {
     );
     res.status(201).json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -89,7 +93,8 @@ app.get('/jobs/:id', verifySupabaseToken, async (req, res) => {
     job.charges = chargesRes.rows;
     res.json(job);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -114,7 +119,8 @@ app.post('/jobs/:id/visits', verifySupabaseToken, async (req, res) => {
     );
     res.status(201).json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -141,7 +147,8 @@ app.post('/jobs/:id/charges', verifySupabaseToken, async (req, res) => {
     await pool.query("UPDATE jobs SET status = 'quoted', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'requested'", [id]);
     res.status(201).json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -164,7 +171,8 @@ app.post('/charges/:id/approve', verifySupabaseToken, async (req, res) => {
     );
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -181,7 +189,8 @@ app.post('/guarantor/vouch', verifySupabaseToken, async (req, res) => {
     );
     res.status(201).json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -240,7 +249,8 @@ app.post('/jobs/:id/rate', verifySupabaseToken, async (req, res) => {
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   } finally {
     client.release();
   }
@@ -266,7 +276,8 @@ app.post('/jobs/:id/cancel', verifySupabaseToken, async (req, res) => {
     );
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -305,7 +316,8 @@ app.get('/provider/jobs', verifySupabaseToken, async (req, res) => {
     
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
