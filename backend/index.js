@@ -78,7 +78,12 @@ app.get('/jobs/:id', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.sub;
   try {
-    const jobRes = await pool.query('SELECT * FROM jobs WHERE id = $1', [id]);
+    const jobRes = await pool.query(`
+      SELECT j.*, p.phone as provider_phone
+      FROM jobs j
+      JOIN providers p ON j.provider_id = p.id
+      WHERE j.id = $1
+    `, [id]);
     if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
     const job = jobRes.rows[0];
 

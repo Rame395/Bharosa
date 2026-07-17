@@ -11,6 +11,7 @@ export const JobScreen: React.FC<Props> = ({ route, navigation }) => {
   const { jobId, providerName } = route.params;
   const [charges, setCharges] = useState<any[]>([]);
   const [jobStatus, setJobStatus] = useState('loading');
+  const [jobPhone, setJobPhone] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,6 +23,7 @@ export const JobScreen: React.FC<Props> = ({ route, navigation }) => {
       const data = await apiFetch(`/jobs/${jobId}`);
       setJobStatus(data.status);
       setCharges(data.charges || []);
+      setJobPhone(data.provider_phone || '');
     } catch (err) {
       // Handled by apiFetch
     } finally {
@@ -73,7 +75,11 @@ export const JobScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleCallProvider = () => {
-    Linking.openURL('tel:+9779800000000');
+    if (jobPhone) {
+      Linking.openURL(`tel:${jobPhone}`);
+    } else {
+      Alert.alert('Error', 'Provider phone number not available.');
+    }
   };
 
   const renderCharge = ({ item }: { item: any }) => (
