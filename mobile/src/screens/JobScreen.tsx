@@ -142,7 +142,8 @@ export const JobScreen: React.FC<Props> = ({ route, navigation }) => {
         ListFooterComponent={
           <View style={styles.actionContainer}>
             <TouchableOpacity 
-              style={styles.completeButton}
+              style={[styles.completeButton, (totalPending > 0 || jobStatus === 'requested' || jobStatus === 'cancelled') && styles.completeButtonDisabled]}
+              disabled={totalPending > 0 || jobStatus === 'requested' || jobStatus === 'cancelled'}
               onPress={() => navigation.navigate('Rating', { jobId, providerName })}
             >
               <Text style={styles.completeButtonText}>Complete Job & Rate</Text>
@@ -180,6 +181,9 @@ const styles = StyleSheet.create({
     padding: T.spacing.md,
     borderRadius: T.radius.medium,
     alignItems: 'center',
+  },
+  completeButtonDisabled: {
+    opacity: 0.5,
   },
   completeButtonText: {
     color: '#FFF',
