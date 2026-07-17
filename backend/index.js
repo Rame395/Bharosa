@@ -44,10 +44,10 @@ app.get('/', (req, res) => {
 app.get('/providers', verifySupabaseToken, async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT p.*, g.name as guarantor_name 
+      SELECT p.*, g.full_name as guarantor_name 
       FROM providers p
       LEFT JOIN providers g ON p.guarantor_id = g.id
-      WHERE p.status = 'verified'
+      WHERE p.is_verified = TRUE
     `);
     res.json(rows);
   } catch (err) {
@@ -232,7 +232,7 @@ app.get('/provider/jobs', verifySupabaseToken, async (req, res) => {
   const providerUserId = req.user.sub; // This is the user's UUID
   try {
     // First find the provider record for this user
-    const provRes = await pool.query('SELECT id FROM providers WHERE user_id = $1', [providerUserId]);
+    const provRes = await pool.query('SELECT id FROM providers WHERE id = $1', [providerUserId]);
     if (provRes.rowCount === 0) return res.status(404).json({ error: 'Provider profile not found' });
     
     const providerId = provRes.rows[0].id;
