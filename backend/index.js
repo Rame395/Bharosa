@@ -181,14 +181,20 @@ app.post('/jobs/:id/rate', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
   const { rating, comment, photo_url } = req.body; // rating should be 1-5
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // 1. Get Job details to ensure customer owns it and get provider_id
-    const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1 AND customer_id = $2', [id, customerId]);
-    if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found or unauthorized' });
+    const jobRes = await client.query('SELECT provider_id FROM jobs WHERE id = $1 AND customer_id = $2', [id, customerId]);
+    if (jobRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Job not found or unauthorized' });
+    }
     const providerId = jobRes.rows[0].provider_id;
 
     // 2. Insert Rating
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       'INSERT INTO ratings (job_id, customer_id, provider_id, rating, comment, photo_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
       [id, customerId, providerId, rating, comment, photo_url]
     );
@@ -203,22 +209,26 @@ app.post('/jobs/:id/rate', verifySupabaseToken, async (req, res) => {
 
     if (trustScoreDelta !== 0) {
       // Update Provider Trust Score
-      await pool.query('UPDATE providers SET trust_score = trust_score + $1 WHERE id = $2', [trustScoreDelta, providerId]);
+      await client.query('UPDATE providers SET trust_score = trust_score + $1 WHERE id = $2', [trustScoreDelta, providerId]);
 
       // The Guarantor Penalty
       if (trustScoreDelta < 0) {
-        const provRes = await pool.query('SELECT guarantor_id FROM providers WHERE id = $1', [providerId]);
+        const provRes = await client.query('SELECT guarantor_id FROM providers WHERE id = $1', [providerId]);
         const guarantorId = provRes.rows[0]?.guarantor_id;
         if (guarantorId) {
           // Guarantor takes a -5 hit for vouching for a bad provider
-          await pool.query('UPDATE providers SET trust_score = trust_score - 5 WHERE id = $1', [guarantorId]);
+          await client.query('UPDATE providers SET trust_score = trust_score - 5 WHERE id = $1', [guarantorId]);
         }
       }
     }
 
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
