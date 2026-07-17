@@ -35,9 +35,20 @@ export const JobScreen: React.FC<Props> = ({ route, navigation }) => {
   const totalPending = charges.filter(c => c.customer_approved_at === null).reduce((sum, c) => sum + Number(c.amount), 0);
 
   const handleApprove = (chargeId: string, amount: number, isEstimate: boolean) => {
+    const originalEstimate = charges.filter(c => c.is_estimate).reduce((sum, c) => sum + Number(c.amount), 0);
+    const newTotal = totalApproved + Number(amount);
+    
+    // Only warn about overage if this isn't the estimate itself, and an estimate exists
+    const isOverage = !isEstimate && originalEstimate > 0 && newTotal > (originalEstimate * 1.5);
+
+    const alertTitle = isOverage ? '⚠️ Significant Overage Warning' : 'Approve Charge';
+    const alertMessage = isOverage 
+      ? `This charge brings the total to Rs. ${newTotal}, which is significantly higher than the original estimate of Rs. ${originalEstimate}. Are you sure you want to approve?`
+      : `Are you sure you want to approve Rs. ${amount} for this ${isEstimate ? 'estimate' : 'fixed charge'}?`;
+
     Alert.alert(
-      'Approve Charge',
-      `Are you sure you want to approve Rs. ${amount} for this ${isEstimate ? 'estimate' : 'fixed charge'}?`,
+      alertTitle,
+      alertMessage,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
