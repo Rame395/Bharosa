@@ -61,6 +61,7 @@ const runMigration = async () => {
         id SERIAL PRIMARY KEY,
         customer_id UUID REFERENCES customers(id) NOT NULL,
         provider_id UUID REFERENCES providers(id) NOT NULL,
+        description TEXT,
         status VARCHAR(50) DEFAULT 'requested' CHECK (status IN ('requested', 'diagnosing', 'quoted', 'in_progress', 'awaiting_next_visit', 'completed', 'disputed')),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

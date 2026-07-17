@@ -60,11 +60,11 @@ app.get('/providers', verifySupabaseToken, async (req, res) => {
 // Create a new job
 app.post('/jobs', verifySupabaseToken, async (req, res) => {
   const customerId = req.user.sub;
-  const { providerId } = req.body;
+  const { providerId, description } = req.body;
   try {
     const { rows } = await pool.query(
-      'INSERT INTO jobs (customer_id, provider_id) VALUES ($1, $2) RETURNING *',
-      [customerId, providerId]
+      'INSERT INTO jobs (customer_id, provider_id, description) VALUES ($1, $2, $3) RETURNING *',
+      [customerId, providerId, description]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
