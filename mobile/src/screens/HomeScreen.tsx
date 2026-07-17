@@ -68,9 +68,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
               isVerified={item.is_verified}
               guarantorName={item.guarantor_name || 'Bharosa Admin'}
               rating={item.trust_score ? (item.trust_score / 10).toFixed(1) : 'New'}
-              priceRange="Consultation req."
+              priceRange="Estimate Varies"
               isFixedPrice={false}
-              responseTime="Usually fast"
+              responseTime={item.avg_response_time || 'Varies'}
               onPress={() => handleProviderPress(item.id, item.full_name)}
             />
           )}
