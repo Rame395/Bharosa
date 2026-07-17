@@ -98,6 +98,11 @@ app.post('/jobs/:id/visits', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.sub;
   const { visit_date, notes } = req.body;
+
+  if (!visit_date || isNaN(Date.parse(visit_date))) {
+    return res.status(400).json({ error: 'visit_date must be a valid date' });
+  }
+
   try {
     const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1', [id]);
     if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
@@ -118,6 +123,11 @@ app.post('/jobs/:id/charges', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.sub;
   const { visit_id, description, amount, is_estimate } = req.body;
+
+  if (amount === undefined || isNaN(Number(amount)) || Number(amount) <= 0) {
+    return res.status(400).json({ error: 'amount must be a positive number' });
+  }
+
   try {
     const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1', [id]);
     if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
@@ -180,6 +190,10 @@ app.post('/jobs/:id/rate', verifySupabaseToken, async (req, res) => {
   const customerId = req.user.sub;
   const { id } = req.params;
   const { rating, comment, photo_url } = req.body; // rating should be 1-5
+
+  if (rating === undefined || !Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5) {
+    return res.status(400).json({ error: 'rating must be an integer between 1 and 5' });
+  }
 
   const client = await pool.connect();
   try {
