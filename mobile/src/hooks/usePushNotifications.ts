@@ -1,17 +1,24 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { apiFetch } from '../api';
 import { AuthContext } from '../context/AuthContext';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+let Notifications: any = null;
+
+if (!isExpoGo) {
+  Notifications = require('expo-notifications');
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export const usePushNotifications = () => {
   const { session } = useContext(AuthContext);
@@ -22,9 +29,9 @@ export const usePushNotifications = () => {
     
     const register = async () => {
       // In a real app, you need a physical device for pushes.
-      // Expo Go on Android supports pushes, iOS requires a paid developer account.
-      if (!Device.isDevice) {
-        console.log('Must use physical device for Push Notifications');
+      // Expo Go on Android SDK 53+ doesn't support remote pushes at all.
+      if (!Device.isDevice || isExpoGo || !Notifications || Platform.OS === 'web') {
+        console.log('Push notifications disabled in Expo Go / Web / Simulators');
         return null;
       }
       
@@ -50,8 +57,7 @@ export const usePushNotifications = () => {
       }
 
       try {
-        // Automatically fetches projectId from app.json in managed Expo
-        const pushToken = (await Notifications.getExpoPushTokenAsync()).data;
+        const pushToken = (await Notifications.getExpoPushTokenAsync({ projectId: Constants.expoConfig?.extra?.eas?.projectId })).data;
         return pushToken;
       } catch (e) {
         console.error('Push token error:', e);

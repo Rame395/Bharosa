@@ -124,6 +124,26 @@ const runMigration = async () => {
     `);
     console.log('Added push_token columns');
 
+    // 9. Messages Table (Phase 3)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        job_id INTEGER REFERENCES jobs(id) NOT NULL,
+        sender_id UUID NOT NULL,
+        content TEXT,
+        photo_url TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Created messages table');
+
+    // 10. Job Location Columns (Phase 4)
+    await client.query(`
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
+    `);
+    console.log('Added location columns to jobs table');
+
     console.log('Migration completed successfully!');
 
   } catch (err) {

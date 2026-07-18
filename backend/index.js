@@ -5,9 +5,15 @@ require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const { Expo } = require('expo-server-sdk');
+const http = require('http');
+const { Server } = require("socket.io");
 
 const expo = new Expo();
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST", "PATCH"] }
+});
 const port = process.env.PORT || 3000;
 
 app.use(cors({
@@ -140,11 +146,11 @@ app.get('/providers', verifySupabaseToken, async (req, res) => {
 // Create a new job
 app.post('/jobs', verifySupabaseToken, async (req, res) => {
   const customerId = req.user.sub;
-  const { providerId, description } = req.body;
+  const { providerId, description, latitude, longitude } = req.body;
   try {
     const insertRes = await pool.query(
-      'INSERT INTO jobs (customer_id, provider_id, description) VALUES ($1, $2, $3) RETURNING *',
-      [customerId, providerId, description]
+      'INSERT INTO jobs (customer_id, provider_id, description, latitude, longitude) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [customerId, providerId, description, latitude || null, longitude || null]
     );
     const newJob = insertRes.rows[0];
 
@@ -451,7 +457,7 @@ app.get('/provider/jobs', verifySupabaseToken, async (req, res) => {
               'description', jc.description,
               'amount', jc.amount,
               'is_estimate', jc.is_estimate,
-              'status', jc.status
+              'customer_approved_at', jc.customer_approved_at
             )
           ) FILTER (WHERE jc.id IS NOT NULL),
           '[]'
@@ -470,6 +476,44 @@ app.get('/provider/jobs', verifySupabaseToken, async (req, res) => {
   }
 });
 
-app.listen(port, () => {
+// --- Phase 3: Chat Endpoints & Socket ---
+
+app.get('/jobs/:id/messages', verifySupabaseToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM messages WHERE job_id = $1 ORDER BY created_at ASC', [req.params.id]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.id);
+
+  socket.on('join_job', (jobId) => {
+    socket.join(`job_${jobId}`);
+    console.log(`Socket ${socket.id} joined room job_${jobId}`);
+  });
+
+  socket.on('send_message', async (data) => {
+    try {
+      const res = await pool.query(
+        'INSERT INTO messages (job_id, sender_id, content, photo_url) VALUES ($1, $2, $3, $4) RETURNING *',
+        [data.jobId, data.senderId, data.content, data.photoUrl || null]
+      );
+      
+      const savedMsg = res.rows[0];
+      io.to(`job_${data.jobId}`).emit('receive_message', savedMsg);
+    } catch (err) {
+      console.error('Socket message error:', err);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
+server.listen(port, () => {
   console.log(`Backend API listening on port ${port}`);
 });

@@ -10,19 +10,21 @@ import { RatingScreen } from '../screens/RatingScreen';
 import { RegistrationScreen } from '../screens/RegistrationScreen';
 import { ProviderDashboard } from '../screens/ProviderDashboard';
 import { ProviderJobScreen } from '../screens/ProviderJobScreen';
+import { ChatScreen } from '../screens/ChatScreen';
 import { AuthContext } from '../context/AuthContext';
 import { apiFetch } from '../api';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 
 export type RootStackParamList = {
   Home: undefined;
-  Job: { jobId: string; providerName: string };
   Login: undefined;
   Otp: { phone: string };
   Registration: undefined;
-  Rating: { jobId: string; providerName: string };
+  Job: { jobId: number, providerName: string };
+  Rating: { jobId: number, providerId: string, providerName: string };
   ProviderDashboard: undefined;
   ProviderJob: { jobId: number };
+  Chat: { jobId: number, otherPartyName: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -77,13 +79,15 @@ export const AppNavigator = () => {
           appMode === 'customer' ? (
             <>
               <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Bharosa', headerRight: HeaderRight }} />
-              <Stack.Screen name="Job" component={JobScreen} options={({ route }) => ({ title: route.params.providerName })} />
-              <Stack.Screen name="Rating" component={RatingScreen} options={{ title: 'Rate Service' }} />
+              <Stack.Screen name="Job" component={JobScreen} options={{ title: 'Job Request' }} />
+              <Stack.Screen name="Rating" component={RatingScreen} options={{ title: 'Rate Provider' }} />
+              <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
             </>
           ) : (
             <>
               <Stack.Screen name="ProviderDashboard" component={ProviderDashboard} options={{ title: 'Provider Portal', headerRight: HeaderRight }} />
-              <Stack.Screen name="ProviderJob" component={ProviderJobScreen} options={{ title: 'Job Details' }} />
+              <Stack.Screen name="ProviderJob" component={ProviderJobScreen} options={{ title: 'Manage Job' }} />
+              <Stack.Screen name="Chat" component={ChatScreen} options={{ title: 'Chat' }} />
             </>
           )
         )}

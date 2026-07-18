@@ -151,7 +151,10 @@ export const JobScreen: React.FC<Props> = ({ route, navigation }) => {
 
             <View style={styles.secondaryActions}>
               <TouchableOpacity style={styles.callButton} onPress={handleCallProvider}>
-                <Text style={styles.callButtonText}>📞 Call Provider</Text>
+                <Text style={styles.callButtonText}>📞 Call</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.chatButton} onPress={() => navigation.navigate('Chat', { jobId, otherPartyName: providerName })}>
+                <Text style={styles.chatButtonText}>💬 Chat</Text>
               </TouchableOpacity>
               
               {jobStatus !== 'cancelled' && (
@@ -202,6 +205,17 @@ const styles = StyleSheet.create({
   },
   callButtonText: {
     color: '#FFF',
+    ...T.typography.label,
+  },
+  chatButton: {
+    flex: 1,
+    backgroundColor: T.colors.secondary,
+    padding: T.spacing.md,
+    borderRadius: T.radius.medium,
+    alignItems: 'center',
+  },
+  chatButtonText: {
+    color: '#000',
     ...T.typography.label,
   },
   cancelButton: {

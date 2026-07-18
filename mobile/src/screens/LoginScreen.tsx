@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { supabase } from '../supabase';
@@ -34,32 +34,43 @@ export const LoginScreen = ({ navigation }: any) => {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
-      const redirectUrl = Linking.createURL('/auth');
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: true,
-        },
-      });
+      
+      if (Platform.OS === 'web') {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin,
+          },
+        });
+        if (error) throw error;
+      } else {
+        const redirectUrl = Linking.createURL('/auth');
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+          },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (data?.url) {
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-        if (result.type === 'success' && result.url) {
-          const fragment = result.url.split('#')[1];
-          if (fragment) {
-            const params = fragment.split('&').reduce((acc, current) => {
-              const [key, value] = current.split('=');
-              acc[key] = value;
-              return acc;
-            }, {} as Record<string, string>);
-            if (params.access_token && params.refresh_token) {
-              await supabase.auth.setSession({ 
-                access_token: params.access_token, 
-                refresh_token: params.refresh_token 
-              });
+        if (data?.url) {
+          const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+          if (result.type === 'success' && result.url) {
+            const fragment = result.url.split('#')[1];
+            if (fragment) {
+              const params = fragment.split('&').reduce((acc, current) => {
+                const [key, value] = current.split('=');
+                acc[key] = value;
+                return acc;
+              }, {} as Record<string, string>);
+              if (params.access_token && params.refresh_token) {
+                await supabase.auth.setSession({ 
+                  access_token: params.access_token, 
+                  refresh_token: params.refresh_token 
+                });
+              }
             }
           }
         }

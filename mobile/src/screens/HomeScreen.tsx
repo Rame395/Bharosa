@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, FlatList, StyleSheet, Text, SafeAreaView, TouchableOpacity, ActivityIndicator, Modal, TextInput } from 'react-native';
+import { View, FlatList, StyleSheet, Text, SafeAreaView, TouchableOpacity, ActivityIndicator, Modal, TextInput, Platform } from 'react-native';
+import * as Location from 'expo-location';
 import { ProviderCard } from '../components/ProviderCard';
+import { MapView, Marker } from '../components/Map';
 import { T } from '../designSystem';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -13,10 +15,19 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState<{id: string, name: string} | null>(null);
   const [problemDescription, setProblemDescription] = useState('');
+  const [location, setLocation] = useState<{latitude: number, longitude: number} | null>(null);
 
   useEffect(() => {
     fetchProviders();
+    requestLocation();
   }, []);
+
+  const requestLocation = async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') return;
+    let loc = await Location.getCurrentPositionAsync({});
+    setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+  };
 
   const fetchProviders = async () => {
     try {
@@ -38,7 +49,12 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const data = await apiFetch('/jobs', {
         method: 'POST',
-        body: JSON.stringify({ providerId: selectedProvider.id, description: problemDescription })
+        body: JSON.stringify({ 
+          providerId: selectedProvider.id, 
+          description: problemDescription,
+          latitude: location?.latitude,
+          longitude: location?.longitude
+        })
       });
       const provName = selectedProvider.name;
       setSelectedProvider(null);
@@ -95,11 +111,29 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
               style={styles.textInput}
               placeholder="e.g. My sink is leaking..."
               multiline
-              numberOfLines={4}
+              numberOfLines={3}
               value={problemDescription}
               onChangeText={setProblemDescription}
               textAlignVertical="top"
             />
+
+            {location && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ marginBottom: 4, fontWeight: 'bold' }}>Location Attached</Text>
+                <MapView
+                  style={{ height: 120, width: '100%', borderRadius: 8 }}
+                  initialRegion={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  }}
+                  onPress={(e: any) => setLocation(e?.nativeEvent?.coordinate || location)}
+                >
+                  <Marker coordinate={location} />
+                </MapView>
+              </View>
+            )}
             
             <View style={styles.modalButtons}>
               <TouchableOpacity style={[styles.modalButton, styles.cancelBtn]} onPress={cancelCreateJob}>
