@@ -111,6 +111,19 @@ const runMigration = async () => {
     `);
     console.log('Created ratings table');
 
+    // 8. Update Jobs Constraint and Add Push Tokens
+    await client.query(`
+      ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_status_check;
+      ALTER TABLE jobs ADD CONSTRAINT jobs_status_check CHECK (status IN ('requested', 'diagnosing', 'quoted', 'in_progress', 'awaiting_next_visit', 'completed', 'disputed', 'cancelled'));
+    `);
+    console.log('Updated jobs status constraint');
+
+    await client.query(`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS push_token VARCHAR(255);
+      ALTER TABLE providers ADD COLUMN IF NOT EXISTS push_token VARCHAR(255);
+    `);
+    console.log('Added push_token columns');
+
     console.log('Migration completed successfully!');
 
   } catch (err) {

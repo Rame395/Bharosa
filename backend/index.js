@@ -4,7 +4,9 @@ const { Pool } = require('pg');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
+const { Expo } = require('expo-server-sdk');
 
+const expo = new Expo();
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -53,27 +55,65 @@ const verifySupabaseToken = (req, res, next) => {
 // Sync Supabase Auth User with local DB
 app.post('/users/sync', verifySupabaseToken, async (req, res) => {
   const userId = req.user.sub;
-  const { name, role } = req.body;
+  const { name } = req.body;
   const contactInfo = req.user.phone || req.user.email || 'unknown'; 
   
   try {
-    if (role === 'provider') {
-      await pool.query(
-        'INSERT INTO providers (id, full_name, phone, category) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
-        [userId, name || 'New Provider', contactInfo, 'General']
-      );
-    } else {
-      await pool.query(
-        'INSERT INTO customers (id, full_name, phone) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
-        [userId, name || 'New Customer', contactInfo]
-      );
-    }
+    await pool.query(
+      'INSERT INTO customers (id, full_name, phone) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
+      [userId, name || 'New User', contactInfo]
+    );
+
+    // Insert into providers as well (unverified by default). They won't appear in search until verified.
+    await pool.query(
+      'INSERT INTO providers (id, full_name, phone, category, is_verified) VALUES ($1, $2, $3, $4, false) ON CONFLICT (id) DO NOTHING',
+      [userId, name || 'New User', contactInfo, 'General']
+    );
+
     res.json({ success: true });
   } catch (err) {
     console.error('Sync Error:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+// Save Push Token Endpoint
+app.post('/users/push-token', verifySupabaseToken, async (req, res) => {
+  const userId = req.user.sub;
+  const { pushToken } = req.body;
+
+  if (!pushToken) return res.status(400).json({ error: 'Push token required' });
+  if (!Expo.isExpoPushToken(pushToken)) {
+    return res.status(400).json({ error: 'Invalid Expo push token' });
+  }
+
+  try {
+    await pool.query('UPDATE customers SET push_token = $1 WHERE id = $2', [pushToken, userId]);
+    await pool.query('UPDATE providers SET push_token = $1 WHERE id = $2', [pushToken, userId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const sendPushNotification = async (userId, title, body, data = {}) => {
+  try {
+    const dbRes = await pool.query('SELECT push_token FROM customers WHERE id = $1', [userId]);
+    if (dbRes.rows.length === 0 || !dbRes.rows[0].push_token) return;
+
+    const pushToken = dbRes.rows[0].push_token;
+    if (!Expo.isExpoPushToken(pushToken)) return;
+
+    const messages = [{ to: pushToken, sound: 'default', title, body, data }];
+    const chunks = expo.chunkPushNotifications(messages);
+    for (let chunk of chunks) {
+      await expo.sendPushNotificationsAsync(chunk);
+    }
+  } catch (err) {
+    console.error('Push Notification Error:', err);
+  }
+};
 
 app.get('/', (req, res) => {
   res.send('Bharosa API is running');
@@ -102,11 +142,15 @@ app.post('/jobs', verifySupabaseToken, async (req, res) => {
   const customerId = req.user.sub;
   const { providerId, description } = req.body;
   try {
-    const { rows } = await pool.query(
+    const insertRes = await pool.query(
       'INSERT INTO jobs (customer_id, provider_id, description) VALUES ($1, $2, $3) RETURNING *',
       [customerId, providerId, description]
     );
-    res.status(201).json(rows[0]);
+    const newJob = insertRes.rows[0];
+
+    await sendPushNotification(providerId, 'New Job Request', `You have a new job request!`, { jobId: newJob.id });
+
+    res.status(201).json(newJob);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -171,26 +215,82 @@ app.post('/jobs/:id/visits', verifySupabaseToken, async (req, res) => {
 
 // Add a charge to a job (Provider action)
 app.post('/jobs/:id/charges', verifySupabaseToken, async (req, res) => {
-  const { id } = req.params;
+  const { id: jobId } = req.params;
   const userId = req.user.sub;
-  const { visit_id, description, amount, is_estimate } = req.body;
+  const { description, amount, is_estimate } = req.body;
 
   if (amount === undefined || isNaN(Number(amount)) || Number(amount) <= 0) {
     return res.status(400).json({ error: 'amount must be a positive number' });
   }
 
   try {
-    const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1', [id]);
+    const jobRes = await pool.query('SELECT provider_id FROM jobs WHERE id = $1', [jobId]);
     if (jobRes.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
     if (jobRes.rows[0].provider_id !== userId) return res.status(403).json({ error: 'Unauthorized: Only the assigned provider can add a charge' });
 
-    const { rows } = await pool.query(
-      'INSERT INTO job_charges (job_id, visit_id, description, amount, is_estimate) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [id, visit_id, description, amount, is_estimate]
+    const chargeRes = await pool.query(
+      'INSERT INTO job_charges (job_id, description, amount, is_estimate) VALUES ($1, $2, $3, $4) RETURNING *',
+      [jobId, description, amount, is_estimate]
     );
+    
+    const customerRes = await pool.query('SELECT customer_id FROM jobs WHERE id = $1', [jobId]);
+    if (customerRes.rows.length > 0) {
+      await sendPushNotification(customerRes.rows[0].customer_id, 'New Charge Added', `Your provider added a charge for Rs. ${amount}`, { jobId });
+    }
+
     // Optionally update job status to quoted
-    await pool.query("UPDATE jobs SET status = 'quoted', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'requested'", [id]);
-    res.status(201).json(rows[0]);
+    await pool.query("UPDATE jobs SET status = 'quoted', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'requested'", [jobId]);
+    res.status(201).json(chargeRes.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// --- NEW: Status Endpoint ---
+const VALID_TRANSITIONS = {
+  'requested': ['diagnosing', 'cancelled'],
+  'diagnosing': ['quoted', 'cancelled'],
+  'quoted': ['in_progress', 'cancelled'],
+  'in_progress': ['completed', 'cancelled'],
+  'completed': [],
+  'cancelled': []
+};
+
+app.patch('/jobs/:id/status', verifySupabaseToken, async (req, res) => {
+  const providerId = req.user.sub;
+  const jobId = req.params.id;
+  const { status } = req.body;
+
+  if (!status) return res.status(400).json({ error: 'Status is required' });
+
+  try {
+    const jobRes = await pool.query('SELECT provider_id, status, customer_id FROM jobs WHERE id = $1', [jobId]);
+    if (jobRes.rows.length === 0) return res.status(404).json({ error: 'Job not found' });
+    
+    const job = jobRes.rows[0];
+    if (job.provider_id !== providerId) {
+      return res.status(403).json({ error: 'Only the assigned provider can update this job status' });
+    }
+
+    const currentStatus = job.status;
+    const allowedNext = VALID_TRANSITIONS[currentStatus] || [];
+    
+    if (!allowedNext.includes(status)) {
+      return res.status(400).json({ error: `Invalid transition from ${currentStatus} to ${status}` });
+    }
+
+    const updateRes = await pool.query(
+      'UPDATE jobs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [status, jobId]
+    );
+    const updatedJob = updateRes.rows[0];
+
+    const title = status === 'cancelled' ? 'Job Cancelled' : 'Job Status Updated';
+    const body = status === 'cancelled' ? 'Your provider has cancelled the job.' : `Your job is now: ${status.replace('_', ' ')}`;
+    await sendPushNotification(updatedJob.customer_id, title, body, { jobId: updatedJob.id });
+
+    res.json(updatedJob);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -202,19 +302,23 @@ app.post('/charges/:id/approve', verifySupabaseToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.sub;
   try {
-    const chargeRes = await pool.query('SELECT job_id FROM job_charges WHERE id = $1', [id]);
+    const chargeRes = await pool.query('SELECT job_id, amount FROM job_charges WHERE id = $1', [id]);
     if (chargeRes.rowCount === 0) return res.status(404).json({ error: 'Charge not found' });
     
-    const jobRes = await pool.query('SELECT customer_id FROM jobs WHERE id = $1', [chargeRes.rows[0].job_id]);
+    const jobRes = await pool.query('SELECT customer_id, provider_id FROM jobs WHERE id = $1', [chargeRes.rows[0].job_id]);
     if (jobRes.rowCount === 0 || jobRes.rows[0].customer_id !== userId) {
       return res.status(403).json({ error: 'Unauthorized: Only the customer can approve charges' });
     }
 
-    const { rows } = await pool.query(
+    const resCharge = await pool.query(
       'UPDATE job_charges SET customer_approved_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
     );
-    res.json(rows[0]);
+    const charge = resCharge.rows[0];
+    
+    await sendPushNotification(jobRes.rows[0].provider_id, 'Charge Approved', `The customer approved your charge of Rs. ${charge.amount}`, { jobId: charge.job_id });
+
+    res.json(charge);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
