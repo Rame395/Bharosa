@@ -43,7 +43,7 @@ const verifySupabaseToken = (req, res, next) => {
 
   const token = authHeader.split(' ')[1];
   
-  jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, decoded) => {
+  jwt.verify(token, getKey, { algorithms: ['RS256', 'ES256'] }, (err, decoded) => {
     if (err || !decoded || !decoded.sub) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }

@@ -59,12 +59,6 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <Text style={styles.title}>Bharosa</Text>
-          <TouchableOpacity 
-            style={styles.modeSwitch}
-            onPress={() => navigation.navigate('ProviderDashboard')}
-          >
-            <Text style={styles.modeSwitchText}>Switch to Provider</Text>
-          </TouchableOpacity>
         </View>
         <Text style={styles.subtitle}>Verified local services</Text>
       </View>
