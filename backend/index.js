@@ -141,6 +141,97 @@ app.get('/providers', verifySupabaseToken, async (req, res) => {
   }
 });
 
+// Get logged-in provider profile
+app.get('/providers/me', verifySupabaseToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.*, g.full_name as guarantor_name 
+      FROM providers p
+      LEFT JOIN providers g ON p.guarantor_id = g.id
+      WHERE p.id = $1
+    `, [req.user.sub]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Provider profile not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Request a vouch from a Guarantor
+app.post('/providers/request-vouch', verifySupabaseToken, async (req, res) => {
+  const voucheeId = req.user.sub;
+  const { guarantorPhone } = req.body;
+  
+  try {
+    const guarantorRes = await pool.query('SELECT id, is_verified FROM providers WHERE phone = $1', [guarantorPhone]);
+    
+    if (guarantorRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Guarantor not found with that phone number.' });
+    }
+    
+    const guarantor = guarantorRes.rows[0];
+    if (!guarantor.is_verified) {
+      return res.status(400).json({ error: 'The requested provider is not verified and cannot be a Guarantor.' });
+    }
+    
+    const insertRes = await pool.query(
+      'INSERT INTO guarantor_vouches (guarantor_id, vouchee_id, status) VALUES ($1, $2, $3) RETURNING *',
+      [guarantor.id, voucheeId, 'pending']
+    );
+    
+    await sendPushNotification(guarantor.id, 'Vouch Request', 'A new provider is asking you to vouch for them.');
+    
+    res.status(201).json(insertRes.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Get incoming vouch requests for a guarantor
+app.get('/providers/vouch-requests', verifySupabaseToken, async (req, res) => {
+  const guarantorId = req.user.sub;
+  try {
+    const { rows } = await pool.query(`
+      SELECT gv.*, p.full_name as vouchee_name, p.phone as vouchee_phone 
+      FROM guarantor_vouches gv
+      JOIN providers p ON gv.vouchee_id = p.id
+      WHERE gv.guarantor_id = $1 AND gv.status = 'pending'
+      ORDER BY gv.created_at DESC
+    `, [guarantorId]);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Approve a vouch request
+app.post('/providers/vouch-requests/:id/approve', verifySupabaseToken, async (req, res) => {
+  const guarantorId = req.user.sub;
+  const requestId = req.params.id;
+  
+  try {
+    const reqRes = await pool.query('SELECT * FROM guarantor_vouches WHERE id = $1 AND guarantor_id = $2', [requestId, guarantorId]);
+    if (reqRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Vouch request not found or unauthorized.' });
+    }
+    
+    const vouch = reqRes.rows[0];
+    
+    await pool.query("UPDATE guarantor_vouches SET status = 'approved' WHERE id = $1", [requestId]);
+    await pool.query("UPDATE providers SET is_verified = TRUE, guarantor_id = $1 WHERE id = $2", [guarantorId, vouch.vouchee_id]);
+    
+    await sendPushNotification(vouch.vouchee_id, 'Verification Approved', 'You are now verified and can receive jobs!');
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // --- Job Routes ---
 
 // Create a new job
