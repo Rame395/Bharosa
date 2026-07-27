@@ -1,7 +1,8 @@
 import React, { useContext, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { TouchableOpacity, Text } from 'react-native';
+import { TouchableOpacity, Text, View } from 'react-native';
+import { supabase } from '../supabase';
 import { HomeScreen } from '../screens/HomeScreen';
 import { JobScreen } from '../screens/JobScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -39,11 +40,20 @@ export const AppNavigator = () => {
   };
 
   const HeaderRight = () => (
-    <TouchableOpacity onPress={toggleMode} style={{ padding: 8 }}>
-      <Text style={{ color: '#007AFF', fontWeight: 'bold' }}>
-        {appMode === 'customer' ? 'Provider Mode' : 'Customer Mode'}
-      </Text>
-    </TouchableOpacity>
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <TouchableOpacity onPress={toggleMode} style={{ padding: 8, marginRight: 8 }}>
+        <Text style={{ color: '#007AFF', fontWeight: 'bold' }}>
+          {appMode === 'customer' ? 'Provider Mode' : 'Customer Mode'}
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity onPress={async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) console.error('Logout error:', error);
+      }} style={{ padding: 8 }}>
+        <Text style={{ color: '#FF3B30', fontWeight: 'bold' }}>Logout</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   useEffect(() => {
@@ -74,7 +84,7 @@ export const AppNavigator = () => {
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Otp" component={OtpScreen} options={{ title: 'Verify OTP' }} />
           </>
-        ) : (!session.user.user_metadata?.full_name && !session.user.user_metadata?.name) ? (
+        ) : (!(session.user.user_metadata?.full_name || session.user.user_metadata?.name) || !(session.user.phone || session.user.user_metadata?.phone)) ? (
           <Stack.Screen name="Registration" component={RegistrationScreen} options={{ headerShown: false }} />
         ) : (
           appMode === 'customer' ? (
