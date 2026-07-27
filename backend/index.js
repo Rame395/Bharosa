@@ -61,18 +61,17 @@ const verifySupabaseToken = (req, res, next) => {
 // Sync Supabase Auth User with local DB
 app.post('/users/sync', verifySupabaseToken, async (req, res) => {
   const userId = req.user.sub;
-  const { name } = req.body;
-  const contactInfo = req.user.phone || req.user.email || 'unknown'; 
+  const { name, phone } = req.body;
+  const contactInfo = phone || req.user.phone || req.user.email || 'unknown'; 
   
   try {
     await pool.query(
-      'INSERT INTO customers (id, full_name, phone) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
+      'INSERT INTO customers (id, full_name, phone) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET phone = EXCLUDED.phone',
       [userId, name || 'New User', contactInfo]
     );
 
-    // Insert into providers as well (unverified by default). They won't appear in search until verified.
     await pool.query(
-      'INSERT INTO providers (id, full_name, phone, category, is_verified) VALUES ($1, $2, $3, $4, false) ON CONFLICT (id) DO NOTHING',
+      'INSERT INTO providers (id, full_name, phone, category, is_verified) VALUES ($1, $2, $3, $4, false) ON CONFLICT (id) DO UPDATE SET phone = EXCLUDED.phone',
       [userId, name || 'New User', contactInfo, 'General']
     );
 

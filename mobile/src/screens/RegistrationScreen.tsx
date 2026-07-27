@@ -5,14 +5,19 @@ import { T } from '../designSystem';
 
 export const RegistrationScreen = () => {
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleCompleteRegistration = async () => {
     if (!name.trim()) return Alert.alert('Error', 'Please enter your name');
+    if (!phone.trim()) return Alert.alert('Error', 'Please enter your phone number');
     
     setLoading(true);
     const { error } = await supabase.auth.updateUser({
-      data: { full_name: name.trim() }
+      data: { 
+        full_name: name.trim(),
+        phone: phone.trim() 
+      }
     });
     setLoading(false);
 
@@ -24,8 +29,8 @@ export const RegistrationScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>What should we call you?</Text>
-        <Text style={styles.subtitle}>Please enter your full name to continue.</Text>
+        <Text style={styles.title}>Welcome to Bharosa!</Text>
+        <Text style={styles.subtitle}>Please complete your profile to continue.</Text>
 
         <TextInput
           style={styles.input}
@@ -33,6 +38,14 @@ export const RegistrationScreen = () => {
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
+        />
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Phone Number (e.g. 9812345678)"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
         />
 
         <TouchableOpacity 

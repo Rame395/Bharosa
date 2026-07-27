@@ -51,7 +51,8 @@ export const AppNavigator = () => {
       apiFetch('/users/sync', {
         method: 'POST',
         body: JSON.stringify({ 
-          name: session.user.user_metadata.full_name || session.user.user_metadata.name
+          name: session.user.user_metadata.full_name || session.user.user_metadata.name,
+          phone: session.user.user_metadata.phone || session.user.phone
         })
       }).catch(err => console.error('Failed to sync user', err));
     }
